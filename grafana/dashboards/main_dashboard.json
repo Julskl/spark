@@ -1,0 +1,120 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-ds" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "pluginVersion": "10",
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "queryType": "sql",
+          "rawSql": "SELECT count() AS total FROM delivery.orders",
+          "refId": "A"
+        }
+      ],
+      "title": "Всего заказов",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-ds" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "pluginVersion": "10",
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "queryType": "sql",
+          "rawSql": "SELECT count() AS last_minute FROM delivery.orders WHERE created_at > now() - INTERVAL 1 MINUTE",
+          "refId": "A"
+        }
+      ],
+      "title": "Заказов за последнюю минуту",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-ds" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "m" }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "pluginVersion": "10",
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "queryType": "sql",
+          "rawSql": "SELECT round(avg(delivery_time_min), 1) AS avg_eta FROM delivery.orders WHERE created_at > now() - INTERVAL 10 MINUTE",
+          "refId": "A"
+        }
+      ],
+      "title": "Среднее время доставки, мин (10 мин)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-ds" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 5 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "queryType": "sql",
+          "rawSql": "SELECT toStartOfMinute(created_at) AS t, count() AS orders_per_min, round(avg(delivery_time_min),1) AS avg_eta FROM delivery.orders WHERE created_at > now() - INTERVAL 30 MINUTE GROUP BY t ORDER BY t",
+          "refId": "A"
+        }
+      ],
+      "title": "Поток заказов и среднее ETA по минутам",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-ds" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 5 },
+      "id": 4,
+      "options": { "showHeader": true },
+      "targets": [
+        {
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse-ds" },
+          "queryType": "sql",
+          "rawSql": "SELECT created_at, feature, round(coefficient, 4) AS coefficient, round(r2, 4) AS r2, n_samples FROM delivery.eta_model ORDER BY created_at DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "title": "Коэффициенты ETA-модели (Spark ML)",
+      "type": "table"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["delivery", "clickhouse"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Delivery ETA — Spark + ClickHouse",
+  "uid": "delivery-eta-demo",
+  "version": 1
+}

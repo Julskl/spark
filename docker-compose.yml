@@ -1,0 +1,129 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: clickhouse
+    ports:
+      - "8123:8123" # HTTP интерфейс
+      - "9000:9000" # native протокол (Grafana)
+    volumes:
+      - ./clickhouse/init:/docker-entrypoint-initdb.d:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Приложение-генератор заказов -> ClickHouse
+  data-generator:
+    build: ./data_generator
+    container_name: data-generator
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CH_HOST: clickhouse
+      CH_PORT: "8123"
+      BATCH_SIZE: "200"
+      BATCH_INTERVAL: "5"
+    restart: unless-stopped
+
+  spark-master:
+    image: apache/spark:3.5.1
+    container_name: spark-master
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+      --host spark-master --port 7077 --webui-port 8080
+    ports:
+      - "7077:7077"
+      - "8080:8080" # Spark Master UI
+    volumes:
+      - ./spark/jobs:/opt/spark_jobs:ro
+
+  spark-worker-1:
+    image: apache/spark:3.5.1
+    container_name: spark-worker-1
+    depends_on: [spark-master]
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077 --cores 1 --memory 1g --webui-port 8081
+    ports:
+      - "8181:8081"
+    volumes:
+      - ./spark/jobs:/opt/spark_jobs:ro
+
+  spark-worker-2:
+    image: apache/spark:3.5.1
+    container_name: spark-worker-2
+    depends_on: [spark-master]
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077 --cores 1 --memory 1g --webui-port 8081
+    ports:
+      - "8182:8081"
+    volumes:
+      - ./spark/jobs:/opt/spark_jobs:ro
+
+  spark-worker-3:
+    image: apache/spark:3.5.1
+    container_name: spark-worker-3
+    depends_on: [spark-master]
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077 --cores 1 --memory 1g --webui-port 8081
+    ports:
+      - "8183:8081"
+    volumes:
+      - ./spark/jobs:/opt/spark_jobs:ro
+
+  airflow:
+    build: ./airflow
+    container_name: airflow
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      spark-master:
+        condition: service_started
+    ports:
+      - "8081:8080"   # Airflow UI -> http://localhost:8081
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__EXECUTOR: "SequentialExecutor"
+      CH_HOST: clickhouse
+      CH_PORT: "8123"
+      SPARK_MASTER_URL: "spark://spark-master:7077"
+      AIRFLOW_DRIVER_HOST: "airflow"
+      JAVA_HOME: "/usr/lib/jvm/default-java"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags:ro
+      - ./spark/jobs:/opt/spark_jobs:ro
+    command:
+      - bash
+      - -c
+      - |
+        airflow db migrate
+        airflow users create --username admin --password admin \
+          --firstname Admin --lastname User --role Admin --email admin@example.com || true
+        airflow scheduler &
+        exec airflow webserver
+
+  # Grafana — дашборды и алерты по данным из ClickHouse
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "3000:3000"   # Grafana -> http://localhost:3000 (admin/admin)
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      GF_USERS_DEFAULT_THEME: light
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
